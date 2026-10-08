@@ -1,5 +1,6 @@
 import { LatLng } from '../../geo/geo';
 import { MapOptions, PlannerMap } from '../types';
+import { routePadding } from '../markers';
 
 const PIN = (fill: string, label: string) =>
   `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(
@@ -12,8 +13,10 @@ export class GooglePlanner implements PlannerMap {
   private end?: google.maps.Marker;
   private car?: google.maps.Marker;
   private line?: google.maps.Polyline;
+  private readonly minimal: boolean;
 
   private constructor(el: HTMLElement, options: MapOptions) {
+    this.minimal = !!options.minimal;
     this.map = new google.maps.Map(el, {
       center: { lat: 30, lng: -40 },
       zoom: options.minimal ? 17 : 2,
@@ -80,9 +83,10 @@ export class GooglePlanner implements PlannerMap {
       strokeOpacity: 1,
       strokeWeight: 5,
     });
+    if (this.minimal) return; // the minimap follows the car instead
     const b = new google.maps.LatLngBounds();
     points.forEach((p) => b.extend(p));
-    this.map.fitBounds(b, 80);
+    this.map.fitBounds(b, routePadding());
   }
 
   setCar(p: LatLng | null, headingDeg = 0): void {

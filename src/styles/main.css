@@ -491,7 +491,9 @@ button {
 
 /* ---------- Planner ---------- */
 
-.planner-map {
+/* Qualified so it beats MapLibre's own `.maplibregl-map { position: relative }`,
+   which loads later and would otherwise collapse the map to zero height. */
+.planner .planner-map {
   position: absolute;
   inset: 0;
   background: var(--bg-2);

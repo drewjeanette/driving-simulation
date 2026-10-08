@@ -5,7 +5,7 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url';
 import { LatLng } from '../../geo/geo';
 import { MapOptions, PlannerMap } from '../types';
-import { markerElement, carElement } from '../markers';
+import { markerElement, carElement, routePadding } from '../markers';
 
 // OpenFreeMap: free vector tiles from OpenStreetMap, no key or sign-up.
 const STYLE_URL = 'https://tiles.openfreemap.org/styles/liberty';
@@ -20,8 +20,10 @@ export class MapLibrePlanner implements PlannerMap {
   private start?: maplibregl.Marker;
   private end?: maplibregl.Marker;
   private car?: maplibregl.Marker;
+  private readonly minimal: boolean;
 
   constructor(el: HTMLElement, options: MapOptions) {
+    this.minimal = !!options.minimal;
     this.map = new maplibregl.Map({
       container: el,
       style: STYLE_URL,
@@ -105,10 +107,10 @@ export class MapLibrePlanner implements PlannerMap {
             ]
           : [],
       });
-      if (points && points.length > 1) {
+      if (points && points.length > 1 && !this.minimal) {
         const b = new maplibregl.LngLatBounds();
         points.forEach((p) => b.extend(ll(p)));
-        this.map.fitBounds(b, { padding: 80, duration: 900, maxZoom: 16 });
+        this.map.fitBounds(b, { padding: routePadding(), duration: 900, maxZoom: 16 });
       }
     });
   }

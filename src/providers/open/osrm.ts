@@ -1,6 +1,7 @@
 import { LatLng } from '../../geo/geo';
 import { Maneuver, RouteData, RouteStep, SpeedLimitSpan } from '../../geo/route';
 import { RoutingProvider, fetchJson } from '../types';
+import { fetchSpeedLimits } from './speedlimits';
 
 const OSRM_URL = 'https://router.project-osrm.org/route/v1/driving';
 
@@ -139,7 +140,17 @@ export class OsrmRouting implements RoutingProvider {
 
   async route(from: LatLng, to: LatLng): Promise<RouteData> {
     const coords = `${from.lng.toFixed(6)},${from.lat.toFixed(6)};${to.lng.toFixed(6)},${to.lat.toFixed(6)}`;
-    const url = `${this.baseUrl}/${coords}?overview=full&geometries=geojson&steps=true&annotations=maxspeed`;
-    return parseOsrm(await fetchJson<OsrmResponse>(url));
+    // The public OSRM server rejects `annotations=maxspeed`, so posted limits
+    // come from OpenStreetMap tags via Overpass instead (best effort).
+    const url = `${this.baseUrl}/${coords}?overview=full&geometries=geojson&steps=true`;
+    const route = parseOsrm(await fetchJson<OsrmResponse>(url));
+    if (!route.speedLimits.length) {
+      try {
+        route.speedLimits = await fetchSpeedLimits(route.points);
+      } catch (err) {
+        console.warn('Speed limits unavailable:', (err as Error).message);
+      }
+    }
+    return route;
   }
 }

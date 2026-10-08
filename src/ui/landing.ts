@@ -30,8 +30,8 @@ export class LandingScreen {
       ],
       [
         'camera',
-        'Street View',
-        'Smooth, continuous motion through real imagery, not slideshow jumps.',
+        '360° street photos',
+        'Real street-level imagery with smooth, continuous motion, not slideshow jumps.',
       ],
       [
         'wheel',
@@ -125,7 +125,9 @@ export class LandingScreen {
         el(
           'span',
           {},
-          mode === 'google' ? 'Maps & imagery © Google' : 'Map data © OpenStreetMap contributors',
+          mode === 'google'
+            ? 'Maps & imagery © Google'
+            : 'Map data © OpenStreetMap contributors · Imagery © Mapillary contributors',
         ),
         el(
           'span',

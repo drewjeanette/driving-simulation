@@ -87,8 +87,8 @@ export class DriveSession {
 
     this.root = el('section', { class: 'screen drive' });
     let streetView: StreetViewLayer | null = null;
-    if (providers.streetView) {
-      streetView = new StreetViewLayer(providers.streetView, this.path);
+    if (providers.imagery) {
+      streetView = new StreetViewLayer(providers.imagery, this.path);
       streetView.quality = settings.quality;
       streetView.onError = (m) => toast(m, 'warn', 8000);
     }
@@ -269,7 +269,7 @@ export class DriveSession {
       { ...pose, speed: st.speed, accel: st.accel, yawRate: st.yawRate, steerAngle: st.steerAngle },
       dt,
     );
-    this.renderer.updateStreetView(st.s, dt);
+    this.renderer.updateStreetView(st.s, dt, st.speed);
     this.audio.update(st.rpm, f.throttle, st.speed, f.horn);
 
     this.hudTimer += dt;
@@ -333,9 +333,7 @@ export class DriveSession {
       navInstruction: nav.instruction,
       score: this.coach.score,
       progress: st.s / this.path.length,
-      attribution: this.renderer.streetView?.coverage
-        ? `Imagery © Google${this.renderer.streetView.attribution ? ` · ${this.renderer.streetView.attribution}` : ''}`
-        : '',
+      attribution: this.imageryCredit(),
       device: DEVICE_LABEL[f.device],
     });
     this.renderer.cockpit.drawCluster({
@@ -357,6 +355,13 @@ export class DriveSession {
         message: last && this.time - last.at < 5 ? last.message : '',
       });
     }
+  }
+
+  private imageryCredit(): string {
+    const sv = this.renderer.streetView;
+    if (!sv?.coverage) return '';
+    const buffered = `${this.formatDistance(sv.bufferedAhead)} buffered`;
+    return [sv.source.credit, sv.attribution, buffered].filter(Boolean).join(' · ');
   }
 
   private checkArrival(): void {

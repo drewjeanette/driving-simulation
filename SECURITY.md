@@ -8,16 +8,20 @@ Please email **andrewjeanettebusiness@gmail.com** rather than opening a public i
 
 This is a static, client-side app in a public repository, so **no secret ever lives in the repo or the build**.
 
+- **Mapillary client token.** Client tokens are designed for use in browsers and only grant read access to
+  public imagery. It is still injected at deploy time rather than committed, so forks use their own token and
+  their own rate limits. Never use the Mapillary _client secret_ in this app.
 - **Google Maps API key.** A browser key is always visible to the browser by design. It is protected by
   restrictions in Google Cloud Console, not by hiding it. Before deploying a key, do all of these:
   - restrict it to your **HTTP referrers** (for example `https://andrewjeanette.com/*`),
   - restrict it to the **APIs** the app uses: Maps JavaScript, Places API (New), Routes, Geocoding, Map Tiles,
   - set **daily quotas** and a **budget alert** so abuse can't run up a bill.
-- The key reaches the app at runtime in one of three ways, none of them committed to git:
+- Credentials reach the app at runtime in one of three ways, none of them committed to git:
   1. `config.json` generated at deploy time from an environment variable (how andrewjeanette.com does it),
   2. `.env.local` for local development (git-ignored, see `.env.example`),
   3. a key a user pastes into Settings, which stays in their own browser's localStorage.
-- `npm run publish:site` refuses to run if a key is set in the build environment, and never copies `config.json`.
+- `npm run publish:site` refuses to run if a key or token is set in the build environment, and never copies
+  `config.json`.
 
 ## Hardening in the app
 

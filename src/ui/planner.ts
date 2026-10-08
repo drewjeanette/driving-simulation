@@ -166,7 +166,9 @@ export class PlannerScreen {
         { class: 'mode-note' },
         providers.mode === 'google'
           ? 'Google Maps mode · Street View imagery where available'
-          : 'Open mode · OpenStreetMap data with a simulated road',
+          : providers.imagery
+            ? 'Free mode · OpenStreetMap + Mapillary 360° imagery'
+            : 'Open mode · OpenStreetMap data with a simulated road',
       ),
     );
     this.root = el('section', { class: 'screen planner' }, mapHost, panel);
@@ -304,7 +306,7 @@ export class PlannerScreen {
         el('p', { class: 'fineprint' }, route.attribution),
       );
       this.startBtn.disabled = false;
-      if (this.providers.streetView) void this.checkCoverage(route, seq);
+      if (this.providers.imagery) void this.checkCoverage(route, seq);
     } catch (err) {
       if (seq !== this.seq) return;
       this.summary.replaceChildren(
@@ -319,25 +321,24 @@ export class PlannerScreen {
       'p',
       { class: 'coverage' },
       el('span', { class: 'spinner' }),
-      'Checking Street View coverage…',
+      `Checking ${this.providers.imagery!.name} coverage…`,
     );
     this.summary.prepend(line);
     try {
-      const f = await this.providers.streetView!.coverage(route.points);
+      const source = this.providers.imagery!;
+      const f = await source.coverage(route.points);
       if (seq !== this.seq) return;
       const pct = Math.round(f * 100);
       line.replaceChildren(
         el('span', { class: `coverage-dot ${pct >= 80 ? 'good' : pct >= 40 ? 'mid' : 'bad'}` }),
         pct >= 80
-          ? `Street View: ${pct}% of this route has real 360° imagery`
+          ? `${source.name}: ${pct}% of this route has real 360° imagery`
           : pct > 0
-            ? `Street View: only ${pct}% coverage. Gaps use a simulated road.`
-            : 'No Street View imagery here. You will drive a simulated road.',
+            ? `${source.name}: about ${pct}% coverage. Gaps use a simulated road.`
+            : `No ${source.name} 360° imagery here. You will drive a simulated road.`,
       );
     } catch {
-      line.replaceChildren(
-        'Street View coverage could not be checked (is the Map Tiles API enabled?)',
-      );
+      line.replaceChildren(`${this.providers.imagery!.name} coverage could not be checked.`);
     }
   }
 

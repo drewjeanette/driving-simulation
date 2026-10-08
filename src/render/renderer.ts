@@ -155,11 +155,11 @@ export class DriveRenderer {
     if (this.streetView) this.world.visible = this.streetView.coverage < 0.99;
   }
 
-  updateStreetView(s: number, dt: number): void {
+  updateStreetView(s: number, dt: number, speed = 0): void {
     if (!this.streetView) return;
     const eye = new THREE.Vector3();
     this.camera.getWorldPosition(eye);
-    this.streetView.update(s, eye, dt);
+    this.streetView.update(s, eye, dt, speed);
   }
 
   /** Re-aligns the VR seat so wherever the player is looking becomes straight ahead. */

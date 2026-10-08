@@ -7,7 +7,7 @@
  *   SITE_DIR=/path/to/site npm run publish:site
  *
  * Never copies API keys: config.json is excluded, and the build itself has no
- * key in it unless VITE_GOOGLE_MAPS_API_KEY was set, which this script refuses.
+ * key in it unless a VITE_* key or token was set, which this script refuses.
  */
 import { execSync } from 'node:child_process';
 import { cpSync, existsSync, readdirSync, rmSync, statSync } from 'node:fs';
@@ -18,11 +18,11 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const site = resolve(process.env.SITE_DIR ?? join(root, '..', 'andrewjeanette.com'));
 const target = join(site, 'driving-simulator');
 
-if (process.env.VITE_GOOGLE_MAPS_API_KEY) {
+if (process.env.VITE_GOOGLE_MAPS_API_KEY || process.env.VITE_MAPILLARY_TOKEN) {
   console.error(
-    'Refusing to publish: VITE_GOOGLE_MAPS_API_KEY is set and would be baked into a public repo.',
+    'Refusing to publish: a VITE_* key or token is set and would be baked into a public repo.',
   );
-  console.error('Unset it; the site injects the key at deploy time via config.json instead.');
+  console.error('Unset it; the site injects credentials at deploy time via config.json instead.');
   process.exit(1);
 }
 if (!existsSync(join(site, 'package.json'))) {
@@ -33,7 +33,12 @@ if (!existsSync(join(site, 'package.json'))) {
 execSync('npm run build', {
   cwd: root,
   stdio: 'inherit',
-  env: { ...process.env, BASE_PATH: '/portfolio/driving-simulator/', VITE_GOOGLE_MAPS_API_KEY: '' },
+  env: {
+    ...process.env,
+    BASE_PATH: '/portfolio/driving-simulator/',
+    VITE_GOOGLE_MAPS_API_KEY: '',
+    VITE_MAPILLARY_TOKEN: '',
+  },
 });
 
 rmSync(target, { recursive: true, force: true });

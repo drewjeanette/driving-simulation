@@ -1,4 +1,11 @@
-import { getStoredKey, isPlausibleKey, setStoredKey } from '../config';
+import {
+  getStoredKey,
+  getStoredMapillaryToken,
+  isPlausibleKey,
+  setStoredKey,
+  setStoredMapillaryToken,
+} from '../config';
+import { isPlausibleMapillaryToken } from '../providers/mapillary';
 import { InputManager } from '../input/input';
 import {
   ControlDetector,
@@ -296,32 +303,52 @@ function controllersPane(input: InputManager): HTMLElement {
   );
 }
 
-function dataPane(s: Settings, onChange: (reload: boolean) => void): HTMLElement {
+/** A password-style field for a credential that is saved in this browser only. */
+function credentialField(opts: {
+  label: string;
+  placeholder: string;
+  value: string;
+  valid: (v: string) => boolean;
+  invalidMessage: string;
+  save: (v: string) => void;
+  hint: string;
+  onSaved: () => void;
+}): HTMLElement {
   const input = el('input', {
     class: 'text-input',
     type: 'password',
-    placeholder: 'AIza…',
+    placeholder: opts.placeholder,
     autocomplete: 'off',
     spellcheck: 'false',
-    'aria-label': 'Google Maps API key',
-    value: getStoredKey(),
+    'aria-label': opts.label,
+    value: opts.value,
   });
   const save = el(
     'button',
     {
       class: 'btn btn-sm',
       onclick: () => {
-        const k = input.value.trim();
-        if (k && !isPlausibleKey(k)) {
-          toast('That does not look like a Google Maps API key.', 'error');
+        const v = input.value.trim();
+        if (v && !opts.valid(v)) {
+          toast(opts.invalidMessage, 'error');
           return;
         }
-        setStoredKey(k);
-        onChange(true);
+        opts.save(v);
+        opts.onSaved();
       },
     },
     'Save & reload',
   );
+  return el(
+    'div',
+    { class: 'field' },
+    el('div', { class: 'field-label' }, opts.label),
+    el('div', { class: 'row' }, input, save),
+    el('p', { class: 'hint' }, opts.hint),
+  );
+}
+
+function dataPane(s: Settings, onChange: (reload: boolean) => void): HTMLElement {
   return el(
     'div',
     { class: 'pane' },
@@ -330,23 +357,32 @@ function dataPane(s: Settings, onChange: (reload: boolean) => void): HTMLElement
       'preferOpen',
       'Map provider',
       [
-        [false, 'Google (if configured)'],
-        [true, 'OpenStreetMap only'],
+        [false, 'Google if configured'],
+        [true, 'Free only (OpenStreetMap + Mapillary)'],
       ],
-      'Google adds Street View imagery. OpenStreetMap needs no account and shows a simulated road.',
+      'The free option needs no billing account: OpenStreetMap maps and routing with Mapillary 360° photos. Google adds wider Street View coverage but is a paid API.',
       () => onChange(true),
     ),
-    el(
-      'div',
-      { class: 'field' },
-      el('div', { class: 'field-label' }, 'Your own Google Maps API key (optional)'),
-      el('div', { class: 'row' }, input, save),
-      el(
-        'p',
-        { class: 'hint' },
-        'Stored only in this browser and sent only to Google. Restrict the key to your website in Google Cloud Console. Needs Maps JavaScript, Places (New), Routes, Geocoding and Map Tiles APIs.',
-      ),
-    ),
+    credentialField({
+      label: 'Mapillary client token (free)',
+      placeholder: 'MLY|…',
+      value: getStoredMapillaryToken(),
+      valid: isPlausibleMapillaryToken,
+      invalidMessage: 'That does not look like a Mapillary client token (MLY|…).',
+      save: setStoredMapillaryToken,
+      hint: 'Optional if the site already provides one. Get a free token at mapillary.com/dashboard/developers. Stored only in this browser.',
+      onSaved: () => onChange(true),
+    }),
+    credentialField({
+      label: 'Google Maps API key (optional, paid)',
+      placeholder: 'AIza…',
+      value: getStoredKey(),
+      valid: isPlausibleKey,
+      invalidMessage: 'That does not look like a Google Maps API key.',
+      save: setStoredKey,
+      hint: 'Stored only in this browser and sent only to Google. Restrict the key to your website in Google Cloud Console. Needs Maps JavaScript, Places (New), Routes, Geocoding and Map Tiles APIs.',
+      onSaved: () => onChange(true),
+    }),
   );
 }
 

@@ -1,31 +1,51 @@
 import * as THREE from 'three';
 import { DrivePath } from '../geo/path';
 import { Vec2, clamp, toRad } from '../geo/geo';
-import { PanoMetadata, StreetViewTiles, tileGrid } from '../providers/google/streetview';
+import { ImageryQuality, PanoInfo, PanoSource } from '../providers/imagery';
 
-/** Height of the Street View camera above the road, metres. */
-const PANO_HEIGHT = 2.5;
 /** Radius of the cylinder used as a stand-in for building facades. */
 const FACADE_RADIUS = 14;
-const DISCOVERY_SPACING = 10; // metres between pano lookups along the route
-const LOOKAHEAD = 900; // metres of route to discover ahead of the car
-const MAX_TEXTURES = 18;
+/** Hard cap on GPU textures; most of the buffer is held at low resolution. */
+const MAX_TEXTURES = 70;
+const DISCOVERY_CHUNK = 600; // metres of route looked up per discovery request
 
-export type StreetViewQuality = 'low' | 'high' | 'ultra';
+export type StreetViewQuality = ImageryQuality;
 
-interface Pano {
-  id: string;
-  meta: PanoMetadata;
-  pos: Vec2;
-  s: number;
-  zoom: number;
-  texture: THREE.Texture | null;
-  loading: boolean;
-  lastUsed: number;
+export interface LoadWindow {
+  /** Metres of road to keep loaded in the direction of travel. */
+  ahead: number;
+  /** Metres to keep behind the car. */
+  behind: number;
+  /** +1 driving forward along the route, -1 reversing. */
+  direction: 1 | -1;
 }
 
 /**
- * Renders Google Street View imagery around the car with smooth motion.
+ * Like a game's render distance, but stretched along the road: the faster
+ * you go, the further ahead imagery is preloaded (about 8 seconds of
+ * travel), while only a short tail is kept behind. Reversing flips it.
+ */
+export function loadWindow(speed: number): LoadWindow {
+  const v = Math.abs(speed);
+  return {
+    ahead: clamp(60 + v * 8, 60, 450),
+    behind: clamp(25 + v * 1.5, 25, 70),
+    direction: speed < -0.5 ? -1 : 1,
+  };
+}
+
+interface Pano {
+  info: PanoInfo;
+  pos: Vec2;
+  s: number;
+  level: number;
+  texture: THREE.Texture | null;
+  loading: boolean;
+}
+
+/**
+ * Renders 360° street imagery (Google Street View or Mapillary) around the
+ * car with smooth motion.
  *
  * Each panorama is a photo taken from a single point. Instead of jumping from
  * photo to photo, the shader projects each photo onto a simple proxy of the
@@ -34,6 +54,10 @@ interface Pano {
  * neighbouring panoramas are projected at once and cross-faded, so the road
  * flows under the car the way it does in a real vehicle. Because it is plain
  * geometry in the scene, the same view works per-eye in a VR headset.
+ *
+ * Loading works like chunked render distance: a speed-dependent window of
+ * road ahead is kept loaded, at full resolution near the car and lower
+ * resolution further out, so photos are ready before the car reaches them.
  */
 export class StreetViewLayer {
   readonly mesh: THREE.Mesh;
@@ -42,22 +66,23 @@ export class StreetViewLayer {
   private readonly known = new Set<string>();
   private discoveredUntil = 0;
   private discovering = false;
-  private metaQueue: string[] = [];
-  private metaInFlight = 0;
   private texturesInFlight = 0;
   private disposed = false;
   private failures = 0;
   quality: StreetViewQuality = 'high';
-  /** Largest texture the GPU accepts; 'ultra' needs 8192 for full-resolution panoramas. */
+  /** Largest texture the GPU accepts. */
   maxTextureSize = 4096;
-  /** 0..1, how much of the view Street View currently covers. */
+  /** 0..1, how much of the view the imagery currently covers. */
   coverage = 0;
-  /** Copyright line of the panorama nearest the car. */
+  /** Credit line for the panorama nearest the car. */
   attribution = '';
+  /** Metres of road ahead with imagery loaded and ready, for the HUD. */
+  bufferedAhead = 0;
+  window: LoadWindow = loadWindow(0);
   onError?: (message: string) => void;
 
   constructor(
-    private readonly tiles: StreetViewTiles,
+    readonly source: PanoSource,
     private readonly path: DrivePath,
   ) {
     this.material = new THREE.ShaderMaterial({
@@ -85,17 +110,18 @@ export class StreetViewLayer {
     this.mesh.renderOrder = 5;
   }
 
-  /** Call once per frame with the car's distance along the route and world position. */
-  update(s: number, carPos: THREE.Vector3, dt: number): void {
+  /** Call once per frame with the car's route distance, eye position and speed. */
+  update(s: number, carPos: THREE.Vector3, dt: number, speed = 0): void {
     this.mesh.position.copy(carPos);
+    this.window = loadWindow(speed);
     this.discover(s);
-    this.pumpMetadata();
     this.pumpTextures(s);
+    this.bufferedAhead = this.measureBuffer(s);
 
-    const ready = this.panos.filter((p) => p.texture);
     let a: Pano | null = null;
     let b: Pano | null = null;
-    for (const p of ready) {
+    for (const p of this.panos) {
+      if (!p.texture) continue;
       if (p.s <= s && (!a || p.s > a.s)) a = p;
       if (p.s > s && (!b || p.s < b.s)) b = p;
     }
@@ -113,126 +139,86 @@ export class StreetViewLayer {
       const u = this.material.uniforms;
       u.texA.value = first.texture;
       u.texB.value = second.texture;
-      u.centerA.value.set(first.pos.x, PANO_HEIGHT, -first.pos.y);
-      u.centerB.value.set(second.pos.x, PANO_HEIGHT, -second.pos.y);
-      u.headingA.value = toRad(first.meta.heading);
-      u.headingB.value = toRad(second.meta.heading);
+      u.centerA.value.set(first.pos.x, first.info.height, -first.pos.y);
+      u.centerB.value.set(second.pos.x, second.info.height, -second.pos.y);
+      u.headingA.value = toRad(first.info.heading);
+      u.headingB.value = toRad(second.info.heading);
       u.blend.value = blend;
-      first.lastUsed = second.lastUsed = performance.now();
       target = 1;
-      const nearest = blend < 0.5 ? first : second;
-      this.attribution = [nearest.meta.copyright, nearest.meta.date].filter(Boolean).join(' · ');
+      this.attribution = (blend < 0.5 ? first : second).info.attribution;
     }
     this.coverage += (target - this.coverage) * clamp(dt * 4, 0, 1);
     this.material.uniforms.opacity.value = this.coverage;
     this.mesh.visible = this.coverage > 0.01;
   }
 
+  /** Looks up which panoramas exist well beyond the load window. */
   private discover(s: number): void {
     if (this.discovering || this.disposed || this.failures > 3) return;
-    if (this.discoveredUntil >= this.path.length || this.discoveredUntil > s + LOOKAHEAD) return;
+    const horizon = s + this.window.ahead + DISCOVERY_CHUNK;
+    if (this.discoveredUntil >= this.path.length || this.discoveredUntil > horizon) return;
     this.discovering = true;
-    const start = this.discoveredUntil;
-    const locations = [];
-    for (let i = 0; i < 100; i++) {
-      const at = start + i * DISCOVERY_SPACING;
-      if (at > this.path.length) break;
-      locations.push(this.path.toLatLng(this.path.sample(at)));
-    }
-    this.tiles
-      .panoIds(locations, 20)
-      .then((ids) => {
-        for (const id of ids) {
-          if (id && !this.known.has(id)) {
-            this.known.add(id);
-            this.metaQueue.push(id);
-          }
+    const from = this.discoveredUntil;
+    const to = Math.min(from + DISCOVERY_CHUNK, this.path.length);
+    this.source
+      .discover(this.path, from, to)
+      .then((found) => {
+        for (const info of found) {
+          if (this.known.has(info.id)) continue;
+          this.known.add(info.id);
+          const pos = this.path.projection.toLocal({ lat: info.lat, lng: info.lng });
+          const hit = this.path.project(pos);
+          // Skip panoramas that belong to a different road (e.g. an overpass).
+          if (hit.distance > 12) continue;
+          this.panos.push({ info, pos, s: hit.s, level: 0, texture: null, loading: false });
         }
-        this.discoveredUntil = start + locations.length * DISCOVERY_SPACING;
+        this.panos.sort((x, y) => x.s - y.s);
+        this.discoveredUntil = to;
         this.failures = 0;
       })
       .catch((err: Error) => this.fail(err))
       .finally(() => (this.discovering = false));
   }
 
-  private pumpMetadata(): void {
-    while (this.metaInFlight < 4 && this.metaQueue.length && !this.disposed) {
-      const id = this.metaQueue.shift()!;
-      this.metaInFlight++;
-      this.tiles
-        .metadata(id)
-        .then((meta) => {
-          const pos = this.path.projection.toLocal({ lat: meta.lat, lng: meta.lng });
-          const hit = this.path.project(pos);
-          // Skip panoramas that belong to a different road (e.g. an overpass).
-          if (hit.distance > 12) return;
-          this.panos.push({
-            id,
-            meta,
-            pos,
-            s: hit.s,
-            zoom: 0,
-            texture: null,
-            loading: false,
-            lastUsed: 0,
-          });
-          this.panos.sort((x, y) => x.s - y.s);
-        })
-        .catch((err: Error) => this.fail(err))
-        .finally(() => this.metaInFlight--);
-    }
+  /** Signed distance of a pano from the car, positive in the direction of travel. */
+  private along(p: Pano, s: number): number {
+    return (p.s - s) * this.window.direction;
   }
 
   private pumpTextures(s: number): void {
-    const near = this.panos
-      .filter((p) => p.s > s - 25 && p.s < s + 140)
-      .sort((x, y) => Math.abs(x.s - s - 10) - Math.abs(y.s - s - 10));
-    for (const p of near) {
-      if (this.texturesInFlight >= 3) break;
+    const { ahead, behind } = this.window;
+    const inWindow = this.panos.filter((p) => {
+      const d = this.along(p, s);
+      return d > -behind && d < ahead;
+    });
+    // Nearest first, with a bias toward what's coming up.
+    inWindow.sort((x, y) => priority(this.along(x, s)) - priority(this.along(y, s)));
+    for (const p of inWindow) {
+      if (this.texturesInFlight >= 4) break;
       if (p.loading) continue;
       const d = Math.abs(p.s - s);
-      // Progressive sharpness: every pano starts at zoom 2 (2K), the ones around
-      // the car upgrade to 4K, and on 'ultra' the very nearest go to 8K.
-      let want = 2;
-      if (this.quality !== 'low' && d < 35) want = 3;
-      if (this.quality === 'ultra' && d < 15 && this.maxTextureSize >= 8192) want = 4;
-      if (p.zoom >= want) continue;
-      void this.loadTexture(p, p.zoom === 0 ? 2 : want);
+      // Level of detail rings: sharpest near the car, cheaper further out.
+      const want =
+        d < 35
+          ? this.source.wantLevel(this.quality, d, this.maxTextureSize)
+          : d < 150
+            ? this.source.firstLevel(this.quality)
+            : 1;
+      if (p.level >= want) continue;
+      // Get something on screen fast, then refine.
+      void this.loadTexture(
+        p,
+        p.level === 0 ? Math.min(want, this.source.firstLevel(this.quality)) : want,
+      );
     }
     this.evict(s);
   }
 
-  private async loadTexture(p: Pano, z: number): Promise<void> {
+  private async loadTexture(p: Pano, level: number): Promise<void> {
     p.loading = true;
     this.texturesInFlight++;
     try {
-      const grid = tileGrid(p.meta, z);
-      const canvas = document.createElement('canvas');
-      canvas.width = Math.min(grid.width, this.maxTextureSize);
-      canvas.height = Math.min(grid.height, this.maxTextureSize / 2);
-      const ctx = canvas.getContext('2d')!;
-      const sx = canvas.width / grid.width;
-      const sy = canvas.height / grid.height;
-      const jobs: Promise<void>[] = [];
-      for (let y = 0; y < grid.rows; y++) {
-        for (let x = 0; x < grid.cols; x++) {
-          jobs.push(
-            this.tiles
-              .tileUrl(p.id, z, x, y)
-              .then(loadImage)
-              .then((img) => {
-                ctx.drawImage(
-                  img,
-                  x * grid.tileWidth * sx,
-                  y * grid.tileHeight * sy,
-                  grid.tileWidth * sx,
-                  grid.tileHeight * sy,
-                );
-              }),
-          );
-        }
-      }
-      await Promise.all(jobs);
+      const canvas = await this.source.load(p.info, level, this.maxTextureSize);
       if (this.disposed) return;
       const tex = new THREE.CanvasTexture(canvas);
       tex.colorSpace = THREE.SRGBColorSpace;
@@ -241,8 +227,7 @@ export class StreetViewLayer {
       tex.wrapS = THREE.RepeatWrapping;
       p.texture?.dispose();
       p.texture = tex;
-      p.zoom = z;
-      p.lastUsed = performance.now();
+      p.level = level;
     } catch (err) {
       this.fail(err as Error);
     } finally {
@@ -251,27 +236,47 @@ export class StreetViewLayer {
     }
   }
 
+  /** Unloads panoramas that fell out of the window, then the furthest if over budget. */
   private evict(s: number): void {
+    const { ahead, behind } = this.window;
     const loaded = this.panos.filter((p) => p.texture);
-    if (loaded.length <= MAX_TEXTURES) return;
-    loaded
+    for (const p of loaded) {
+      const d = this.along(p, s);
+      if (d < -behind - 20 || d > ahead + 150) this.drop(p);
+    }
+    const still = loaded.filter((p) => p.texture);
+    if (still.length <= MAX_TEXTURES) return;
+    still
       .sort((x, y) => Math.abs(y.s - s) - Math.abs(x.s - s))
-      .slice(0, loaded.length - MAX_TEXTURES)
-      .forEach((p) => {
-        p.texture?.dispose();
-        p.texture = null;
-        p.zoom = 0;
-      });
+      .slice(0, still.length - MAX_TEXTURES)
+      .forEach((p) => this.drop(p));
+  }
+
+  private drop(p: Pano): void {
+    p.texture?.dispose();
+    p.texture = null;
+    p.level = 0;
+  }
+
+  /** How far ahead the run of loaded panoramas reaches without a gap. */
+  private measureBuffer(s: number): number {
+    const dir = this.window.direction;
+    const ahead = this.panos
+      .filter((p) => this.along(p, s) >= 0)
+      .sort((x, y) => this.along(x, s) - this.along(y, s));
+    let reach = 0;
+    for (const p of ahead) {
+      const d = (p.s - s) * dir;
+      if (!p.texture || d - reach > 30) break;
+      reach = d;
+    }
+    return reach;
   }
 
   private fail(err: Error): void {
     this.failures++;
-    console.warn('Street View:', err.message);
-    if (this.failures === 3) {
-      this.onError?.(
-        'Street View imagery is unavailable (the Map Tiles API may not be enabled for this key). Showing the simulated road instead.',
-      );
-    }
+    console.warn(`${this.source.name}:`, err.message);
+    if (this.failures === 3) this.onError?.(this.source.unavailableMessage);
   }
 
   dispose(): void {
@@ -282,16 +287,9 @@ export class StreetViewLayer {
   }
 }
 
-function loadImage(url: string): Promise<HTMLImageElement> {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.referrerPolicy = 'strict-origin-when-cross-origin';
-    img.decoding = 'async';
-    img.onload = () => resolve(img);
-    img.onerror = () => reject(new Error('Street View tile failed to load'));
-    img.src = url;
-  });
+/** Load order: what's just ahead first, then just behind, then further ahead. */
+export function priority(along: number): number {
+  return along >= 0 ? along : -along * 3;
 }
 
 const VERTEX = /* glsl */ `

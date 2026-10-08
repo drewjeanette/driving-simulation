@@ -10,6 +10,12 @@ export interface PanoInfo {
   lng: number;
   /** Compass heading (degrees) of the centre column of the image. */
   heading: number;
+  /**
+   * Full camera orientation as an axis-angle, world (ENU) to camera, when the
+   * provider knows it. Used instead of `heading` so tilted or rolled 360°
+   * cameras are straightened.
+   */
+  rotation?: readonly number[];
   /** Camera height above the road, metres. */
   height: number;
   /** Per-photo credit, e.g. capture date and photographer. */

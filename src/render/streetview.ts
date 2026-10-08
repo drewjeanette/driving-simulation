@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { DrivePath } from '../geo/path';
-import { Vec2, clamp, toRad } from '../geo/geo';
+import { Vec2, clamp } from '../geo/geo';
+import { Mat3, fromHeading, fromWorldToCamera } from '../geo/rotation';
 import { ImageryQuality, PanoInfo, PanoSource } from '../providers/imagery';
 
 /** Radius of the cylinder used as a stand-in for building facades. */
@@ -36,6 +37,8 @@ export function loadWindow(speed: number): LoadWindow {
 
 interface Pano {
   info: PanoInfo;
+  /** Row-major world-to-camera matrix for the shader. */
+  orientation: Mat3;
   pos: Vec2;
   s: number;
   level: number;
@@ -91,8 +94,8 @@ export class StreetViewLayer {
         texB: { value: null },
         centerA: { value: new THREE.Vector3() },
         centerB: { value: new THREE.Vector3() },
-        headingA: { value: 0 },
-        headingB: { value: 0 },
+        rotA: { value: new THREE.Matrix3() },
+        rotB: { value: new THREE.Matrix3() },
         blend: { value: 0 },
         opacity: { value: 0 },
         facadeRadius: { value: FACADE_RADIUS },
@@ -141,8 +144,8 @@ export class StreetViewLayer {
       u.texB.value = second.texture;
       u.centerA.value.set(first.pos.x, first.info.height, -first.pos.y);
       u.centerB.value.set(second.pos.x, second.info.height, -second.pos.y);
-      u.headingA.value = toRad(first.info.heading);
-      u.headingB.value = toRad(second.info.heading);
+      (u.rotA.value as THREE.Matrix3).set(...first.orientation);
+      (u.rotB.value as THREE.Matrix3).set(...second.orientation);
       u.blend.value = blend;
       target = 1;
       this.attribution = (blend < 0.5 ? first : second).info.attribution;
@@ -170,7 +173,18 @@ export class StreetViewLayer {
           const hit = this.path.project(pos);
           // Skip panoramas that belong to a different road (e.g. an overpass).
           if (hit.distance > 12) continue;
-          this.panos.push({ info, pos, s: hit.s, level: 0, texture: null, loading: false });
+          const orientation = info.rotation
+            ? fromWorldToCamera(info.rotation)
+            : fromHeading(info.heading);
+          this.panos.push({
+            info,
+            orientation,
+            pos,
+            s: hit.s,
+            level: 0,
+            texture: null,
+            loading: false,
+          });
         }
         this.panos.sort((x, y) => x.s - y.s);
         this.discoveredUntil = to;
@@ -306,8 +320,8 @@ const FRAGMENT = /* glsl */ `
   uniform sampler2D texB;
   uniform vec3 centerA;
   uniform vec3 centerB;
-  uniform float headingA;
-  uniform float headingB;
+  uniform mat3 rotA;
+  uniform mat3 rotB;
   uniform float blend;
   uniform float opacity;
   uniform float facadeRadius;
@@ -331,18 +345,21 @@ const FRAGMENT = /* glsl */ `
     return origin + dir * t;
   }
 
-  vec4 samplePano(sampler2D tex, vec3 center, float heading, vec3 origin, vec3 dir) {
+  // rot maps a world direction into the panorama camera's axes
+  // (x right, y down, z forward = image centre), so tilted or rolled
+  // 360° cameras are straightened before sampling.
+  vec4 samplePano(sampler2D tex, vec3 center, mat3 rot, vec3 origin, vec3 dir) {
     vec3 p = normalize(proxyHit(origin, dir, center) - center);
-    float azimuth = atan(p.x, -p.z); // compass: 0 = north (-z), clockwise
-    float u = fract(0.5 + (azimuth - heading) / (2.0 * PI));
-    float v = 0.5 + asin(clamp(p.y, -1.0, 1.0)) / PI;
+    vec3 c = rot * p;
+    float u = fract(0.5 + atan(c.x, c.z) / (2.0 * PI));
+    float v = 0.5 + asin(clamp(-c.y, -1.0, 1.0)) / PI;
     return texture2D(tex, vec2(u, v));
   }
 
   void main() {
     vec3 dir = normalize(vWorld - cameraPosition);
-    vec4 a = samplePano(texA, centerA, headingA, cameraPosition, dir);
-    vec4 b = samplePano(texB, centerB, headingB, cameraPosition, dir);
+    vec4 a = samplePano(texA, centerA, rotA, cameraPosition, dir);
+    vec4 b = samplePano(texB, centerB, rotB, cameraPosition, dir);
     gl_FragColor = vec4(mix(a.rgb, b.rgb, blend), opacity);
     #include <colorspace_fragment>
   }

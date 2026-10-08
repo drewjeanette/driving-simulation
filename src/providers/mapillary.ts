@@ -22,6 +22,8 @@ const FIELDS = [
   'computed_geometry',
   'compass_angle',
   'computed_compass_angle',
+  'computed_rotation',
+  'camera_type',
   'captured_at',
   'creator',
   'sequence',
@@ -36,6 +38,8 @@ export interface MapillaryImage {
   computed_geometry?: { coordinates: [number, number] };
   compass_angle?: number;
   computed_compass_angle?: number;
+  computed_rotation?: number[];
+  camera_type?: string;
   captured_at?: number;
   creator?: { username?: string };
   sequence?: string;
@@ -134,6 +138,8 @@ export class MapillarySource implements PanoSource {
     for (const img of seen.values()) {
       const c = (img.computed_geometry ?? img.geometry)?.coordinates;
       if (!c || !img.thumb_2048_url) continue;
+      // Only true 360° images; some "pano" uploads are partial or fisheye.
+      if (img.camera_type && !/^(equirectangular|spherical)$/.test(img.camera_type)) continue;
       const hit = path.project(path.projection.toLocal({ lat: c[1], lng: c[0] }));
       if (hit.distance > 10 || hit.s < from - 10 || hit.s > end + 10) continue;
       candidates.push({
@@ -199,6 +205,11 @@ function toPano(img: MapillaryImage): PanoInfo {
     lng,
     // The centre column of a Mapillary panorama faces the camera's compass angle.
     heading: img.computed_compass_angle ?? img.compass_angle ?? 0,
+    // Full orientation from Mapillary's structure-from-motion, when available.
+    rotation:
+      img.computed_rotation?.length === 3 && img.computed_rotation.every(Number.isFinite)
+        ? img.computed_rotation
+        : undefined,
     height: 2.0,
     attribution: [who, date].filter(Boolean).join(' · '),
     data: img,

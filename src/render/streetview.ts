@@ -11,6 +11,27 @@ const MAX_TEXTURES = 70;
 const DISCOVERY_CHUNK = 600; // metres of route looked up per discovery request
 
 export type StreetViewQuality = ImageryQuality;
+export type ImageryMode = 'smooth' | 'classic';
+
+const CLASSIC_FADE_SECONDS = 0.35;
+/** Metres a new photo must be closer than the current one before switching. */
+const CLASSIC_HYSTERESIS = 1.5;
+
+/**
+ * Classic mode's choice of photo: the one nearest the car along the route,
+ * but only switching once another is clearly closer, so the view doesn't
+ * flicker back and forth halfway between two photos.
+ */
+export function pickClassic<T extends { s: number }>(
+  panos: T[],
+  s: number,
+  current: T | null,
+): T | null {
+  let best: T | null = null;
+  for (const p of panos) if (!best || Math.abs(p.s - s) < Math.abs(best.s - s)) best = p;
+  if (!best || !current || !panos.includes(current)) return best;
+  return Math.abs(best.s - s) < Math.abs(current.s - s) - CLASSIC_HYSTERESIS ? best : current;
+}
 
 export interface LoadWindow {
   /** Metres of road to keep loaded in the direction of travel. */
@@ -73,6 +94,11 @@ export class StreetViewLayer {
   private disposed = false;
   private failures = 0;
   quality: StreetViewQuality = 'high';
+  /** 'smooth' reprojects for continuous motion; 'classic' shows photos unwarped. */
+  mode: ImageryMode = 'classic';
+  private classicCurrent: Pano | null = null;
+  private classicPrevious: Pano | null = null;
+  private classicFade = 1;
   /** Largest texture the GPU accepts. */
   maxTextureSize = 4096;
   /** 0..1, how much of the view the imagery currently covers. */
@@ -99,6 +125,7 @@ export class StreetViewLayer {
         blend: { value: 0 },
         opacity: { value: 0 },
         facadeRadius: { value: FACADE_RADIUS },
+        reproject: { value: 1 },
       },
       vertexShader: VERTEX,
       fragmentShader: FRAGMENT,
@@ -121,6 +148,17 @@ export class StreetViewLayer {
     this.pumpTextures(s);
     this.bufferedAhead = this.measureBuffer(s);
 
+    const target = this.mode === 'classic' ? this.updateClassic(s, dt) : this.updateSmooth(s);
+    this.coverage += (target - this.coverage) * clamp(dt * 4, 0, 1);
+    this.material.uniforms.opacity.value = this.coverage;
+    this.mesh.visible = this.coverage > 0.01;
+  }
+
+  /**
+   * Smooth mode: reproject the photos either side of the car onto a model
+   * of the street and cross-fade by position, for continuous motion.
+   */
+  private updateSmooth(s: number): number {
     let a: Pano | null = null;
     let b: Pano | null = null;
     for (const p of this.panos) {
@@ -133,26 +171,48 @@ export class StreetViewLayer {
     if (b && b.s - s > 30) b = null;
     const first = a ?? b;
     const second = b ?? a;
-    let target = 0;
-    if (first && second) {
-      const span = second.s - first.s;
-      const t = span > 0.01 ? clamp((s - first.s) / span, 0, 1) : 0;
-      // Ease the cross-fade so each photo is crisp near its own position.
-      const blend = t * t * (3 - 2 * t);
-      const u = this.material.uniforms;
-      u.texA.value = first.texture;
-      u.texB.value = second.texture;
-      u.centerA.value.set(first.pos.x, first.info.height, -first.pos.y);
-      u.centerB.value.set(second.pos.x, second.info.height, -second.pos.y);
-      (u.rotA.value as THREE.Matrix3).set(...first.orientation);
-      (u.rotB.value as THREE.Matrix3).set(...second.orientation);
-      u.blend.value = blend;
-      target = 1;
-      this.attribution = (blend < 0.5 ? first : second).info.attribution;
+    if (!first || !second) return 0;
+    const span = second.s - first.s;
+    const t = span > 0.01 ? clamp((s - first.s) / span, 0, 1) : 0;
+    // Ease the cross-fade so each photo is crisp near its own position.
+    const blend = t * t * (3 - 2 * t);
+    this.bind(first, second, blend, true);
+    this.attribution = (blend < 0.5 ? first : second).info.attribution;
+    return 1;
+  }
+
+  /**
+   * Classic mode: like Street View itself. The nearest photo is shown exactly
+   * as taken (no warping), and passing the next one triggers a short fade.
+   */
+  private updateClassic(s: number, dt: number): number {
+    const ready = this.panos.filter((p) => p.texture);
+    const next = pickClassic(ready, s, this.classicCurrent);
+    if (next && next !== this.classicCurrent) {
+      this.classicPrevious = this.classicCurrent;
+      this.classicCurrent = next;
+      this.classicFade = this.classicPrevious ? 0 : 1;
     }
-    this.coverage += (target - this.coverage) * clamp(dt * 4, 0, 1);
-    this.material.uniforms.opacity.value = this.coverage;
-    this.mesh.visible = this.coverage > 0.01;
+    this.classicFade = Math.min(1, this.classicFade + dt / CLASSIC_FADE_SECONDS);
+    const cur = this.classicCurrent?.texture ? this.classicCurrent : null;
+    if (!cur || Math.abs(cur.s - s) > 40) return 0;
+    const prev = this.classicPrevious?.texture ? this.classicPrevious : cur;
+    const t = this.classicFade;
+    this.bind(prev, cur, t * t * (3 - 2 * t), false);
+    this.attribution = cur.info.attribution;
+    return 1;
+  }
+
+  private bind(first: Pano, second: Pano, blend: number, reproject: boolean): void {
+    const u = this.material.uniforms;
+    u.texA.value = first.texture;
+    u.texB.value = second.texture;
+    u.centerA.value.set(first.pos.x, first.info.height, -first.pos.y);
+    u.centerB.value.set(second.pos.x, second.info.height, -second.pos.y);
+    (u.rotA.value as THREE.Matrix3).set(...first.orientation);
+    (u.rotB.value as THREE.Matrix3).set(...second.orientation);
+    u.blend.value = blend;
+    u.reproject.value = reproject ? 1 : 0;
   }
 
   /** Looks up which panoramas exist well beyond the load window. */
@@ -325,6 +385,7 @@ const FRAGMENT = /* glsl */ `
   uniform float blend;
   uniform float opacity;
   uniform float facadeRadius;
+  uniform float reproject;
   varying vec3 vWorld;
 
   const float PI = 3.14159265359;
@@ -349,7 +410,8 @@ const FRAGMENT = /* glsl */ `
   // (x right, y down, z forward = image centre), so tilted or rolled
   // 360° cameras are straightened before sampling.
   vec4 samplePano(sampler2D tex, vec3 center, mat3 rot, vec3 origin, vec3 dir) {
-    vec3 p = normalize(proxyHit(origin, dir, center) - center);
+    // Classic mode looks straight into the photo from its own centre.
+    vec3 p = reproject > 0.5 ? normalize(proxyHit(origin, dir, center) - center) : dir;
     vec3 c = rot * p;
     float u = fract(0.5 + atan(c.x, c.z) / (2.0 * PI));
     float v = 0.5 + asin(clamp(-c.y, -1.0, 1.0)) / PI;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { loadWindow, priority } from './streetview';
+import { loadWindow, pickClassic, priority } from './streetview';
 
 describe('speed-based load window', () => {
   it('reaches further ahead as speed rises, about 8 s of travel', () => {
@@ -23,5 +23,29 @@ describe('speed-based load window', () => {
   it('loads what is just ahead before what is behind', () => {
     expect(priority(10)).toBeLessThan(priority(-10));
     expect(priority(5)).toBeLessThan(priority(40));
+  });
+});
+
+describe('classic photo switching', () => {
+  const panos = [{ s: 0 }, { s: 10 }, { s: 20 }];
+
+  it('shows the nearest photo', () => {
+    expect(pickClassic(panos, 2, null)).toBe(panos[0]);
+    expect(pickClassic(panos, 9, null)).toBe(panos[1]);
+  });
+
+  it("doesn't flicker halfway between two photos", () => {
+    // At 5.5 m the next photo is only 1 m closer than the current one: stay.
+    expect(pickClassic(panos, 5.5, panos[0])).toBe(panos[0]);
+    // Well past the midpoint: switch.
+    expect(pickClassic(panos, 7, panos[0])).toBe(panos[1]);
+  });
+
+  it('switches back when reversing past the midpoint', () => {
+    expect(pickClassic(panos, 3, panos[1])).toBe(panos[0]);
+  });
+
+  it('drops a current photo that is no longer loaded', () => {
+    expect(pickClassic(panos, 11, { s: 50 })).toBe(panos[1]);
   });
 });

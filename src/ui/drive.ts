@@ -13,7 +13,7 @@ import { DriveRenderer } from '../render/renderer';
 import { StreetViewLayer } from '../render/streetview';
 import { PlannerMap } from '../providers/types';
 import { Hud } from './hud';
-import { Settings } from './settings';
+import { Settings, saveSettings } from './settings';
 import { el, toast } from './dom';
 
 export interface DriveResult {
@@ -90,6 +90,7 @@ export class DriveSession {
     if (providers.imagery) {
       streetView = new StreetViewLayer(providers.imagery, this.path);
       streetView.quality = settings.quality;
+      streetView.mode = settings.imageryMode;
       streetView.onError = (m) => toast(m, 'warn', 8000);
     }
     this.renderer = new DriveRenderer(this.root, this.path, this.rightHand, streetView);
@@ -178,6 +179,19 @@ export class DriveSession {
     this.renderer.setView(this.renderer.view === 'cockpit' ? 'clean' : 'cockpit');
   }
 
+  private toggleImageryMode(): void {
+    const sv = this.renderer.streetView;
+    if (!sv) return;
+    this.settings.imageryMode = this.settings.imageryMode === 'classic' ? 'smooth' : 'classic';
+    sv.mode = this.settings.imageryMode;
+    saveSettings(this.settings);
+    toast(
+      this.settings.imageryMode === 'classic'
+        ? 'Classic view: photos shown exactly as taken'
+        : 'Smooth view: photos warped for continuous motion',
+    );
+  }
+
   private toggleMute(): void {
     this.audio.setMuted(!this.audio.isMuted);
     this.settings.muted = this.audio.isMuted;
@@ -219,6 +233,9 @@ export class DriveSession {
           break;
         case 'camera':
           this.cycleCamera();
+          break;
+        case 'imageryMode':
+          this.toggleImageryMode();
           break;
         case 'pause':
           this.pause();
@@ -415,7 +432,10 @@ export class DriveSession {
   /** Applies settings changed mid-drive. */
   applySettings(): void {
     this.vehicle.assist = this.settings.assist;
-    if (this.renderer.streetView) this.renderer.streetView.quality = this.settings.quality;
+    if (this.renderer.streetView) {
+      this.renderer.streetView.quality = this.settings.quality;
+      this.renderer.streetView.mode = this.settings.imageryMode;
+    }
   }
 
   finish(completed: boolean): void {

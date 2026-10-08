@@ -1,11 +1,13 @@
 import { SteeringAssist } from '../sim/vehicle';
-import { StreetViewQuality } from '../render/streetview';
+import { ImageryMode, StreetViewQuality } from '../render/streetview';
 
 export interface Settings {
   units: 'mph' | 'km/h';
   assist: SteeringAssist;
   trafficSide: 'auto' | 'right' | 'left';
   quality: StreetViewQuality;
+  /** How 360° photos are shown: unwarped (classic) or reprojected for motion (smooth). */
+  imageryMode: ImageryMode;
   muted: boolean;
   /** Use OpenStreetMap data even when a Google key is configured. */
   preferOpen: boolean;
@@ -21,6 +23,7 @@ function defaults(): Settings {
     assist: 'curves',
     trafficSide: 'auto',
     quality: 'high',
+    imageryMode: 'classic',
     muted: false,
     preferOpen: false,
   };
@@ -31,6 +34,7 @@ const ALLOWED: { [K in keyof Settings]: readonly Settings[K][] } = {
   assist: ['off', 'curves', 'lane'],
   trafficSide: ['auto', 'right', 'left'],
   quality: ['low', 'high', 'ultra'],
+  imageryMode: ['classic', 'smooth'],
   muted: [true, false],
   preferOpen: [true, false],
 };

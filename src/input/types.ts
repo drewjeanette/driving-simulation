@@ -11,7 +11,8 @@ export type Action =
   | 'horn'
   | 'camera'
   | 'pause'
-  | 'recenter';
+  | 'recenter'
+  | 'imageryMode';
 
 export const ACTION_LABELS: Record<Action, string> = {
   shiftUp: 'Shift up (toward P)',
@@ -27,6 +28,7 @@ export const ACTION_LABELS: Record<Action, string> = {
   camera: 'Change camera',
   pause: 'Pause',
   recenter: 'Recenter view',
+  imageryMode: 'Switch photo view (classic / smooth)',
 };
 
 export interface InputFrame {

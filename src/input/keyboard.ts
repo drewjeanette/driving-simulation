@@ -17,6 +17,7 @@ const ACTION_KEYS: Record<string, Action> = {
   Escape: 'pause',
   KeyP: 'pause',
   KeyZ: 'recenter',
+  KeyV: 'imageryMode',
 };
 
 const THROTTLE_KEYS = ['KeyW', 'ArrowUp'];

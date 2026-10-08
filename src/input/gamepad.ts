@@ -54,6 +54,7 @@ export function standardProfile(id: string): DeviceProfile {
       camera: 3, // Y / Triangle
       pause: 9, // Menu / Options
       recenter: 11, // right stick click
+      imageryMode: 2, // X / Square
     },
   };
 }

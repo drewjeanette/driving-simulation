@@ -72,6 +72,7 @@ function controlsCheatSheet(): HTMLElement {
     ['Turn signals', 'Q / E   (X = hazards)', 'LB / RB'],
     ['Look around', 'Drag the mouse (double-click resets)', 'Right stick'],
     ['Horn · Camera · Pause', 'H · C · Esc', 'L3 · Y · Menu'],
+    ['Photo view: classic / smooth', 'V', 'X / Square'],
   ];
   return el(
     'table',
@@ -216,6 +217,17 @@ function drivingPane(s: Settings, changed: () => void): HTMLElement {
         ['ultra', 'Ultra (8K)'],
       ],
       'Higher settings load full-resolution 360° photos around the car. Ultra uses much more data and GPU memory.',
+      changed,
+    ),
+    choice(
+      s,
+      'imageryMode',
+      'Photo view',
+      [
+        ['classic', 'Classic'],
+        ['smooth', 'Smooth'],
+      ],
+      'Classic shows each photo exactly as taken and fades to the next as you pass it, like Street View. Smooth warps photos for continuous motion but can bend nearby objects. Press V while driving to switch.',
       changed,
     ),
   );

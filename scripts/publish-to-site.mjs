@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
- * Builds the simulator for andrewjeanette.com/drive/ and copies it into a
- * checkout of the website repository (default: ../andrewjeanette.com/drive).
+ * Builds the simulator for andrewjeanette.com/portfolio/driving-simulator/ and copies it into a
+ * checkout of the website repository (default: ../andrewjeanette.com/driving-simulator).
  *
  *   npm run publish:site                 # uses ../andrewjeanette.com
  *   SITE_DIR=/path/to/site npm run publish:site
@@ -16,7 +16,7 @@ import { fileURLToPath } from 'node:url';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const site = resolve(process.env.SITE_DIR ?? join(root, '..', 'andrewjeanette.com'));
-const target = join(site, 'drive');
+const target = join(site, 'driving-simulator');
 
 if (process.env.VITE_GOOGLE_MAPS_API_KEY) {
   console.error(
@@ -33,7 +33,7 @@ if (!existsSync(join(site, 'package.json'))) {
 execSync('npm run build', {
   cwd: root,
   stdio: 'inherit',
-  env: { ...process.env, BASE_PATH: '/drive/', VITE_GOOGLE_MAPS_API_KEY: '' },
+  env: { ...process.env, BASE_PATH: '/portfolio/driving-simulator/', VITE_GOOGLE_MAPS_API_KEY: '' },
 });
 
 rmSync(target, { recursive: true, force: true });

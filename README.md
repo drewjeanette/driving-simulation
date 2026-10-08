@@ -4,7 +4,7 @@
 drive it through Google Street View's 360° photos with a gas pedal, brake, steering and a real `P R N D` gear
 selector. A built-in examiner scores you the way a road-test examiner would.
 
-Live at **[andrewjeanette.com/drive](https://andrewjeanette.com/drive/)** · MIT licensed · no install, runs in
+Live at **[andrewjeanette.com/portfolio/driving-simulator](https://andrewjeanette.com/portfolio/driving-simulator/)** · MIT licensed · no install, runs in
 the browser
 
 ![Landing page with the interactive globe](docs/landing.png)
@@ -128,7 +128,7 @@ quality setting to reduce tile requests.
 | `npm run check`        | Typecheck, lint and unit tests (what CI runs, plus format and build)                                                                  |
 | `npm test`             | Vitest unit tests: vehicle physics, transmission interlocks, examiner rules, route geometry, controller calibration, provider parsing |
 | `npm run build`        | Production build into `dist/` with a strict Content-Security-Policy                                                                   |
-| `npm run publish:site` | Build for `/drive/` and copy it into the andrewjeanette.com repo                                                                      |
+| `npm run publish:site` | Build for `/portfolio/driving-simulator/` and copy it into the andrewjeanette.com repo                                                |
 
 ## Project layout
 

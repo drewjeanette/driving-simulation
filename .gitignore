@@ -1,0 +1,14 @@
+node_modules
+dist
+coverage
+*.log
+.DS_Store
+.vscode/*
+!.vscode/extensions.json
+.idea
+
+# Local secrets: never commit API keys.
+.env
+.env.*
+!.env.example
+public/config.json

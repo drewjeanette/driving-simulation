@@ -227,7 +227,7 @@ function drivingPane(s: Settings, changed: () => void): HTMLElement {
         ['classic', 'Classic'],
         ['smooth', 'Smooth'],
       ],
-      'Classic shows each photo exactly as taken and fades to the next as you pass it, like Street View. Smooth warps photos for continuous motion but can bend nearby objects. Press V while driving to switch.',
+      'Classic shows one photo at a time, gliding through it as you drive and fading to the next as you pass it, so nothing bends. Smooth blends neighbouring photos for continuous motion but can bend and ghost nearby objects. Press V while driving to switch.',
       changed,
     ),
   );

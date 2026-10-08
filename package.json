@@ -1,0 +1,48 @@
+{
+  "name": "driving-simulation",
+  "version": "1.0.0",
+  "description": "Browser-based driving simulator for learner drivers: plan a real route, then drive it in Street View with keyboard, gamepad, racing wheel or VR.",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "author": "Andrew Jeanette",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/drewjeanette/driving-simulation.git"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "check": "npm run typecheck && npm run lint && npm run test",
+    "publish:site": "node scripts/publish-to-site.mjs"
+  },
+  "dependencies": {
+    "maplibre-gl": "^6.13.0",
+    "three": "^0.186.1",
+    "topojson-client": "^3.1.0",
+    "world-atlas": "^2.0.2"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/geojson": "^7946.0.16",
+    "@types/google.maps": "^3.66.5",
+    "@types/node": "^22.20.5",
+    "@types/three": "^0.186.0",
+    "@types/topojson-client": "^3.1.5",
+    "eslint": "^10.12.0",
+    "globals": "^17.13.0",
+    "jsdom": "^29.1.1",
+    "prettier": "^3.9.9",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.71.1",
+    "vite": "^8.3.4",
+    "vitest": "^5.0.3"
+  }
+}

@@ -4,8 +4,14 @@ import { Vec2, clamp } from '../geo/geo';
 import { Mat3, fromHeading, fromWorldToCamera } from '../geo/rotation';
 import { ImageryQuality, PanoInfo, PanoSource } from '../providers/imagery';
 
-/** Radius of the cylinder used as a stand-in for building facades. */
+/** Radius of the cylinder used as a stand-in for building facades (Smooth mode). */
 const FACADE_RADIUS = 14;
+/**
+ * Classic mode's backdrop distance. Far enough that nearby objects never
+ * bend, close enough that the scene still grows gently as the car moves
+ * between two photos taken many metres apart.
+ */
+const CLASSIC_BACKDROP_RADIUS = 60;
 /** Hard cap on GPU textures; most of the buffer is held at low resolution. */
 const MAX_TEXTURES = 70;
 const DISCOVERY_CHUNK = 600; // metres of route looked up per discovery request
@@ -94,7 +100,7 @@ export class StreetViewLayer {
   private disposed = false;
   private failures = 0;
   quality: StreetViewQuality = 'high';
-  /** 'smooth' reprojects for continuous motion; 'classic' shows photos unwarped. */
+  /** 'smooth' blends neighbouring photos; 'classic' shows one photo at a time, unbent. */
   mode: ImageryMode = 'classic';
   private classicCurrent: Pano | null = null;
   private classicPrevious: Pano | null = null;
@@ -125,7 +131,6 @@ export class StreetViewLayer {
         blend: { value: 0 },
         opacity: { value: 0 },
         facadeRadius: { value: FACADE_RADIUS },
-        reproject: { value: 1 },
       },
       vertexShader: VERTEX,
       fragmentShader: FRAGMENT,
@@ -176,14 +181,14 @@ export class StreetViewLayer {
     const t = span > 0.01 ? clamp((s - first.s) / span, 0, 1) : 0;
     // Ease the cross-fade so each photo is crisp near its own position.
     const blend = t * t * (3 - 2 * t);
-    this.bind(first, second, blend, true);
+    this.bind(first, second, blend, FACADE_RADIUS);
     this.attribution = (blend < 0.5 ? first : second).info.attribution;
     return 1;
   }
 
   /**
-   * Classic mode: like Street View itself. The nearest photo is shown exactly
-   * as taken (no warping), and passing the next one triggers a short fade.
+   * Classic mode: one photo at a time, like Street View itself, so nothing is
+   * ghosted or bent. Passing the next photo triggers a short fade.
    */
   private updateClassic(s: number, dt: number): number {
     const ready = this.panos.filter((p) => p.texture);
@@ -198,12 +203,15 @@ export class StreetViewLayer {
     if (!cur || Math.abs(cur.s - s) > 40) return 0;
     const prev = this.classicPrevious?.texture ? this.classicPrevious : cur;
     const t = this.classicFade;
-    this.bind(prev, cur, t * t * (3 - 2 * t), false);
+    // Glide through the photo from the car's real position: the road is
+    // projected onto the ground so it flows under the car, everything else
+    // onto a distant backdrop so it grows without bending.
+    this.bind(prev, cur, t * t * (3 - 2 * t), CLASSIC_BACKDROP_RADIUS);
     this.attribution = cur.info.attribution;
     return 1;
   }
 
-  private bind(first: Pano, second: Pano, blend: number, reproject: boolean): void {
+  private bind(first: Pano, second: Pano, blend: number, backdropRadius: number): void {
     const u = this.material.uniforms;
     u.texA.value = first.texture;
     u.texB.value = second.texture;
@@ -212,7 +220,7 @@ export class StreetViewLayer {
     (u.rotA.value as THREE.Matrix3).set(...first.orientation);
     (u.rotB.value as THREE.Matrix3).set(...second.orientation);
     u.blend.value = blend;
-    u.reproject.value = reproject ? 1 : 0;
+    u.facadeRadius.value = backdropRadius;
   }
 
   /** Looks up which panoramas exist well beyond the load window. */
@@ -268,7 +276,7 @@ export class StreetViewLayer {
     // Nearest first, with a bias toward what's coming up.
     inWindow.sort((x, y) => priority(this.along(x, s)) - priority(this.along(y, s)));
     for (const p of inWindow) {
-      if (this.texturesInFlight >= 4) break;
+      if (this.texturesInFlight >= 6) break;
       if (p.loading) continue;
       const d = Math.abs(p.s - s);
       // Level of detail rings: sharpest near the car, cheaper further out.
@@ -385,7 +393,6 @@ const FRAGMENT = /* glsl */ `
   uniform float blend;
   uniform float opacity;
   uniform float facadeRadius;
-  uniform float reproject;
   varying vec3 vWorld;
 
   const float PI = 3.14159265359;
@@ -410,8 +417,7 @@ const FRAGMENT = /* glsl */ `
   // (x right, y down, z forward = image centre), so tilted or rolled
   // 360° cameras are straightened before sampling.
   vec4 samplePano(sampler2D tex, vec3 center, mat3 rot, vec3 origin, vec3 dir) {
-    // Classic mode looks straight into the photo from its own centre.
-    vec3 p = reproject > 0.5 ? normalize(proxyHit(origin, dir, center) - center) : dir;
+    vec3 p = normalize(proxyHit(origin, dir, center) - center);
     vec3 c = rot * p;
     float u = fract(0.5 + atan(c.x, c.z) / (2.0 * PI));
     float v = 0.5 + asin(clamp(-c.y, -1.0, 1.0)) / PI;

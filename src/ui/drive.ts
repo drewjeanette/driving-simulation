@@ -187,8 +187,8 @@ export class DriveSession {
     saveSettings(this.settings);
     toast(
       this.settings.imageryMode === 'classic'
-        ? 'Classic view: photos shown exactly as taken'
-        : 'Smooth view: photos warped for continuous motion',
+        ? 'Classic view: one photo at a time, no bending'
+        : 'Smooth view: neighbouring photos blended for continuous motion',
     );
   }
 

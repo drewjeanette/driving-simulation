@@ -171,7 +171,10 @@ export class DriveSession {
   }
 
   private shiftCtx() {
-    return { speed: this.vehicle.state.speed, brake: this.lastInput?.brake ?? 0 };
+    return {
+      speed: this.vehicle.state.speed,
+      brake: Math.max(this.lastInput?.brake ?? 0, this.input.touch?.brake ?? 0),
+    };
   }
 
   private lastInput: InputFrame | null = null;

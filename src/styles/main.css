@@ -1087,6 +1087,10 @@ button {
   font-size: 20px;
   font-weight: 700;
   cursor: pointer;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
   transition:
     background 0.15s,
     color 0.15s;
@@ -1148,6 +1152,12 @@ button {
   font-weight: 700;
   touch-action: none;
   user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+.touch-pedal.held {
+  filter: brightness(1.6);
+  transform: scale(0.97);
 }
 .touch-throttle {
   background: rgba(34, 197, 94, 0.25);

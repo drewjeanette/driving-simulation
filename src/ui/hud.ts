@@ -83,16 +83,13 @@ export class Hud {
       'aria-label': 'Gear selector',
     });
     for (const g of GEAR_ORDER) {
-      const b = el(
-        'button',
-        { class: 'gear', 'aria-label': gearName(g), onclick: () => cb.onGear(g) },
-        g,
-      );
+      const b = el('button', { class: 'gear', 'aria-label': gearName(g) }, g);
+      onPress(b, () => cb.onGear(g));
       this.gears.set(g, b);
       gearBox.append(b);
     }
-    this.sigLeft.addEventListener('click', () => cb.onSignal('left'));
-    this.sigRight.addEventListener('click', () => cb.onSignal('right'));
+    onPress(this.sigLeft, () => cb.onSignal('left'));
+    onPress(this.sigRight, () => cb.onSignal('right'));
 
     this.muteBtn = toolBtn('volume', 'Mute (M)', cb.onMute);
     this.vrBtn = toolBtn('vr', 'Enter VR', cb.onVR);
@@ -255,14 +252,27 @@ export class Hud {
     this.touch = state;
     const pedal = (label: string, key: 'throttle' | 'brake') => {
       const b = el('button', { class: `touch-pedal touch-${key}` }, label);
-      const set = (v: number) => (e: Event) => {
-        e.preventDefault();
-        state[key] = v;
+      // Track each finger on the pedal and capture it, so the pedal stays held
+      // while the finger drifts and while other fingers tap the gear selector.
+      const fingers = new Set<number>();
+      const sync = () => {
+        state[key] = fingers.size ? 1 : 0;
+        b.classList.toggle('held', fingers.size > 0);
       };
-      b.addEventListener('pointerdown', set(1));
-      b.addEventListener('pointerup', set(0));
-      b.addEventListener('pointercancel', set(0));
-      b.addEventListener('pointerleave', set(0));
+      b.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        fingers.add(e.pointerId);
+        b.setPointerCapture?.(e.pointerId);
+        sync();
+      });
+      const lift = (e: PointerEvent) => {
+        fingers.delete(e.pointerId);
+        sync();
+      };
+      b.addEventListener('pointerup', lift);
+      b.addEventListener('pointercancel', lift);
+      b.addEventListener('lostpointercapture', lift);
+      b.addEventListener('contextmenu', (e) => e.preventDefault());
       return b;
     };
     const pad = el('div', { class: 'touch-steer' }, el('span', {}, 'Drag to steer'));
@@ -287,6 +297,26 @@ export class Hud {
       ),
     );
   }
+}
+
+/**
+ * Fires on touch-down for fingers and pens, and on click for mice and the
+ * keyboard. Mobile browsers often drop `click` for a tap made while another
+ * finger is already down (e.g. holding the brake while tapping D), but they
+ * always deliver `pointerdown`.
+ */
+function onPress(b: HTMLElement, fn: () => void): void {
+  let touchedAt = -Infinity;
+  b.addEventListener('pointerdown', (e) => {
+    if (e.pointerType === 'mouse') return;
+    e.preventDefault();
+    touchedAt = performance.now();
+    fn();
+  });
+  b.addEventListener('click', () => {
+    if (performance.now() - touchedAt < 800) return; // already handled on touch-down
+    fn();
+  });
 }
 
 function toolBtn(name: string, label: string, fn: () => void): HTMLButtonElement {

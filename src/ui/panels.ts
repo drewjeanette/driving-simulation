@@ -221,6 +221,18 @@ function drivingPane(s: Settings, changed: () => void): HTMLElement {
     ),
     choice(
       s,
+      'worldView',
+      'World',
+      [
+        ['city', '3D city'],
+        ['photos', '360° photos'],
+        ['google3d', 'Google 3D'],
+      ],
+      "3D city rebuilds the real streets from OpenStreetMap: buildings, roads, parks, trees, stop signs and traffic lights. 360° photos uses Mapillary (or Google Street View with a key). Google 3D shows Google Maps' photorealistic 3D buildings and needs a Google key.",
+      changed,
+    ),
+    choice(
+      s,
       'imageryMode',
       'Photo view',
       [

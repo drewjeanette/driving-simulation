@@ -669,6 +669,57 @@ button {
 
 /* ---------- Drive ---------- */
 
+.control-chip {
+  position: absolute;
+  top: 96px;
+  left: 14px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  font-size: 13.5px;
+}
+.control-chip b {
+  font-variant-numeric: tabular-nums;
+}
+.stop-icon {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  clip-path: polygon(30% 0, 70% 0, 100% 30%, 100% 70%, 70% 100%, 30% 100%, 0 70%, 0 30%);
+  background: #c8102e;
+  color: white;
+  font-size: 9px;
+  font-weight: 800;
+}
+.light-icon {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 4px;
+  border-radius: 6px;
+  background: #111;
+}
+.light-icon i {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #333;
+}
+.light-icon i.on.red {
+  background: #ff3b30;
+  box-shadow: 0 0 8px #ff3b30;
+}
+.light-icon i.on.yellow {
+  background: #ffcc00;
+  box-shadow: 0 0 8px #ffcc00;
+}
+.light-icon i.on.green {
+  background: #34c759;
+  box-shadow: 0 0 8px #34c759;
+}
+
 .drive {
   background: #000;
 }

@@ -13,7 +13,7 @@ const CSP = [
   "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
   "font-src 'self' https://fonts.gstatic.com",
   "img-src 'self' data: blob: https://*.googleapis.com https://*.gstatic.com https://*.google.com https://*.ggpht.com https://*.googleusercontent.com https://tiles.openfreemap.org https://*.mapillary.com https://*.fbcdn.net",
-  "connect-src 'self' data: blob: https://*.googleapis.com https://*.gstatic.com https://*.google.com https://router.project-osrm.org https://photon.komoot.io https://tiles.openfreemap.org https://graph.mapillary.com https://*.mapillary.com https://*.fbcdn.net https://overpass-api.de",
+  "connect-src 'self' data: blob: https://*.googleapis.com https://*.gstatic.com https://*.google.com https://router.project-osrm.org https://photon.komoot.io https://tiles.openfreemap.org https://graph.mapillary.com https://*.mapillary.com https://*.fbcdn.net https://overpass-api.de https://www.gstatic.com",
   "worker-src 'self' blob:",
   'child-src blob:',
   "frame-src 'none'",

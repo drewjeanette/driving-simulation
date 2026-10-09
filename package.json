@@ -24,6 +24,7 @@
     "publish:site": "node scripts/publish-to-site.mjs"
   },
   "dependencies": {
+    "3d-tiles-renderer": "^0.5.3",
     "maplibre-gl": "^6.13.0",
     "three": "^0.186.1",
     "topojson-client": "^3.1.0",

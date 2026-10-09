@@ -1,6 +1,7 @@
 import { DrivePath, PathStep } from '../geo/path';
 import { Gear } from './transmission';
 import { VehicleState } from './vehicle';
+import { TrafficControl, signalState } from './traffic';
 
 export type Severity = 'tip' | 'minor' | 'major';
 
@@ -20,6 +21,8 @@ export interface CoachFrame {
   gear: Gear;
   signal: 'left' | 'right' | null;
   laneCenter: number;
+  /** Stop signs and traffic signals along the route, sorted by s. */
+  controls?: readonly TrafficControl[];
 }
 
 interface Rule {
@@ -38,6 +41,9 @@ const RULES = {
   centerLine: { kind: 'center-line', severity: 'major', points: 5, cooldown: 8 },
   offRoad: { kind: 'off-road', severity: 'major', points: 8, cooldown: 6 },
   noSignal: { kind: 'no-signal', severity: 'minor', points: 4, cooldown: 0 },
+  ranStop: { kind: 'ran-stop', severity: 'major', points: 10, cooldown: 0 },
+  ranRed: { kind: 'ran-red', severity: 'major', points: 15, cooldown: 0 },
+  amberLight: { kind: 'amber', severity: 'tip', points: 0, cooldown: 0 },
   wrongSignal: { kind: 'wrong-signal', severity: 'minor', points: 4, cooldown: 0 },
   coastNeutral: { kind: 'coast-neutral', severity: 'tip', points: 1, cooldown: 20 },
   shiftBlocked: { kind: 'shift-blocked', severity: 'tip', points: 0, cooldown: 2 },
@@ -62,6 +68,8 @@ export class Coach {
   distanceDriven = 0;
   maxSpeed = 0;
   private lastS: number | null = null;
+  private readonly judgedControls = new Set<number>();
+  private readonly minSpeedAt = new Map<number, number>();
 
   constructor(private readonly path: DrivePath) {}
 
@@ -81,6 +89,7 @@ export class Coach {
   update(f: CoachFrame, dt: number): void {
     const { state, time } = f;
     const speed = Math.abs(state.speed);
+    const prevS = this.lastS ?? state.s;
     if (this.lastS !== null) this.distanceDriven += Math.abs(state.s - this.lastS);
     this.lastS = state.s;
     this.maxSpeed = Math.max(this.maxSpeed, speed);
@@ -114,6 +123,7 @@ export class Coach {
       this.fire(RULES.coastNeutral, 'Avoid coasting in Neutral: you lose engine control.', time);
     }
     this.checkSignals(f);
+    this.checkControls(f, prevS);
   }
 
   private checkSignals(f: CoachFrame): void {
@@ -134,6 +144,41 @@ export class Coach {
           this.fire(RULES.noSignal, `Use your ${step.signal} turn signal before turning.`, f.time);
         } else if (used !== step.signal) {
           this.fire(RULES.wrongSignal, `Wrong signal: this turn is to the ${step.signal}.`, f.time);
+        }
+      }
+    }
+  }
+
+  /**
+   * Stop signs need a full stop behind the line; traffic signals mustn't be
+   * entered on red. The slowest speed in the 25 m before each stop line is
+   * remembered so a stop a little early still counts.
+   */
+  private checkControls(f: CoachFrame, prevS: number): void {
+    const s = f.state.s;
+    const speed = Math.abs(f.state.speed);
+    for (const c of f.controls ?? []) {
+      if (c.s - s > 30) break;
+      if (this.judgedControls.has(c.id)) continue;
+      if (s > c.s - 25 && s < c.s + 2) {
+        this.minSpeedAt.set(c.id, Math.min(this.minSpeedAt.get(c.id) ?? Infinity, speed));
+      }
+      const crossed = prevS <= c.s && s > c.s && f.state.speed > 0;
+      if (!crossed) continue;
+      this.judgedControls.add(c.id);
+      if (c.kind === 'stop') {
+        if ((this.minSpeedAt.get(c.id) ?? speed) > 0.45) {
+          this.fire(
+            RULES.ranStop,
+            'You rolled through a stop sign. Come to a complete stop at the line.',
+            f.time,
+          );
+        }
+      } else {
+        const light = signalState(c.id, f.time);
+        if (light === 'red') this.fire(RULES.ranRed, 'You ran a red light.', f.time);
+        else if (light === 'yellow' && speed < 9) {
+          this.fire(RULES.amberLight, 'Yellow means stop if you safely can.', f.time);
         }
       }
     }

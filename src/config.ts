@@ -81,6 +81,8 @@ export async function resolveCredentials(): Promise<Credentials> {
 export interface AppProviders extends Providers {
   /** Street-level 360° imagery, or null to drive the simulated road only. */
   imagery: PanoSource | null;
+  /** Set in Google mode; enables Google Photorealistic 3D Tiles. */
+  googleKey?: string;
 }
 
 /**
@@ -100,6 +102,7 @@ export async function createProviders(preferOpen = false): Promise<AppProviders>
         routing: new GoogleRouting(osrm),
         createMap: (el, o) => GooglePlanner.create(el, o),
         imagery: new GoogleStreetViewSource(new StreetViewTiles(googleKey)),
+        googleKey,
       };
     } catch (err) {
       console.warn('Google Maps unavailable, using Open mode:', err);

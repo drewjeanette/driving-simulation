@@ -21,6 +21,8 @@ export interface HudData {
   progress: number;
   attribution: string;
   device: string;
+  /** Upcoming stop sign or traffic light, if any. */
+  control: { kind: 'stop' | 'green' | 'yellow' | 'red'; distance: string } | null;
 }
 
 export interface HudCallbacks {
@@ -68,6 +70,8 @@ export class Hud {
   private readonly attrib = el('div', { class: 'hud-attrib' });
   private readonly device = el('span', { class: 'device-chip' });
   private readonly banner = el('div', { class: 'hud-banner', hidden: true });
+  private readonly controlChip = el('div', { class: 'control-chip glass', hidden: true });
+  private lastControl = '';
   private readonly muteBtn: HTMLButtonElement;
   readonly vrBtn: HTMLButtonElement;
   touch: TouchState | null = null;
@@ -125,6 +129,7 @@ export class Hud {
         ),
       ),
       this.minimapHost,
+      this.controlChip,
       this.coach,
       this.banner,
       el(
@@ -189,6 +194,32 @@ export class Hud {
     this.progress.style.transform = `scaleX(${d.progress.toFixed(4)})`;
     this.attrib.textContent = d.attribution;
     this.device.textContent = d.device;
+    const key = d.control ? `${d.control.kind}|${d.control.distance}` : '';
+    if (key !== this.lastControl) {
+      this.lastControl = key;
+      this.controlChip.hidden = !d.control;
+      if (d.control) {
+        const icon =
+          d.control.kind === 'stop'
+            ? el('span', { class: 'stop-icon' }, 'STOP')
+            : el(
+                'span',
+                { class: 'light-icon' },
+                ...(['red', 'yellow', 'green'] as const).map((c) =>
+                  el('i', { class: c === d.control!.kind ? `on ${c}` : '' }),
+                ),
+              );
+        this.controlChip.replaceChildren(
+          icon,
+          el(
+            'span',
+            {},
+            d.control.kind === 'stop' ? 'Stop sign' : 'Traffic light',
+            el('b', {}, ` ${d.control.distance}`),
+          ),
+        );
+      }
+    }
   }
 
   setMuted(muted: boolean): void {

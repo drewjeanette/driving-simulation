@@ -8,6 +8,8 @@ export interface Settings {
   quality: StreetViewQuality;
   /** How 360° photos are shown: unwarped (classic) or reprojected for motion (smooth). */
   imageryMode: ImageryMode;
+  /** Drive through the 3D city model (default) or through 360° photos. */
+  worldView: 'city' | 'photos' | 'google3d';
   muted: boolean;
   /** Use OpenStreetMap data even when a Google key is configured. */
   preferOpen: boolean;
@@ -24,6 +26,7 @@ function defaults(): Settings {
     trafficSide: 'auto',
     quality: 'high',
     imageryMode: 'classic',
+    worldView: 'city',
     muted: false,
     preferOpen: false,
   };
@@ -35,6 +38,7 @@ const ALLOWED: { [K in keyof Settings]: readonly Settings[K][] } = {
   trafficSide: ['auto', 'right', 'left'],
   quality: ['low', 'high', 'ultra'],
   imageryMode: ['classic', 'smooth'],
+  worldView: ['city', 'photos', 'google3d'],
   muted: [true, false],
   preferOpen: [true, false],
 };

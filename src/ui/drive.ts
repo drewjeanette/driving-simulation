@@ -10,9 +10,11 @@ import { Coach, CoachEvent } from '../sim/coach';
 import { Gear, ShiftResult } from '../sim/transmission';
 import { DEFAULT_PARAMS, MPS_TO_KPH, MPS_TO_MPH, Vehicle } from '../sim/vehicle';
 import { DriveRenderer } from '../render/renderer';
-import { StreetViewLayer } from '../render/streetview';
+import { StreetViewLayer, loadWindow } from '../render/streetview';
+import { CityLayer } from '../render/city';
+import { signalState } from '../sim/traffic';
 import { PlannerMap } from '../providers/types';
-import { Hud } from './hud';
+import { Hud, HudData } from './hud';
 import { Settings, saveSettings } from './settings';
 import { el, toast } from './dom';
 
@@ -59,6 +61,7 @@ export class DriveSession {
   private lookPitch = 0;
   private dragging = false;
   private started = false;
+  private disposed = false;
   onFinish?: (r: DriveResult) => void;
   onPause?: () => void;
   /** A controller's pause button pressed while the pause menu is open. */
@@ -93,7 +96,33 @@ export class DriveSession {
       streetView.mode = settings.imageryMode;
       streetView.onError = (m) => toast(m, 'warn', 8000);
     }
-    this.renderer = new DriveRenderer(this.root, this.path, this.rightHand, streetView);
+    const city = new CityLayer(this.path);
+    city.onError = (m) => toast(m, 'warn', 8000);
+    this.renderer = new DriveRenderer(this.root, this.path, this.rightHand, streetView, city);
+    this.renderer.setWorldView(settings.worldView === 'google3d' ? 'city' : settings.worldView);
+    if (providers.googleKey) {
+      // Loaded on demand so visitors in free mode never download the 3D tiles library.
+      const key = providers.googleKey;
+      void import('../render/googletiles').then(({ GoogleTilesLayer }) => {
+        if (this.disposed) return;
+        const tiles = new GoogleTilesLayer(
+          key,
+          route.points[0],
+          this.renderer.camera,
+          this.renderer.renderer,
+        );
+        tiles.onError = (m) => {
+          toast(m, 'warn', 8000);
+          this.renderer.setWorldView('city');
+        };
+        this.renderer.attachGoogleTiles(tiles);
+        // Google 3D is the most realistic view, so it's the default when available.
+        if (settings.worldView !== 'photos') this.renderer.setWorldView('google3d');
+      });
+    }
+    this.renderer.onCityReady = () => {
+      if (this.renderer.worldView === 'city') toast('3D city loaded from OpenStreetMap');
+    };
     this.renderer.onXRChange = (on) => {
       this.hud.vrBtn.classList.toggle('active', on);
       if (on) toast('VR on. Look around with your head. Press Z or right-stick click to recenter.');
@@ -179,17 +208,49 @@ export class DriveSession {
     this.renderer.setView(this.renderer.view === 'cockpit' ? 'clean' : 'cockpit');
   }
 
+  /**
+   * V cycles through the available views: Google 3D (with a key), the
+   * OpenStreetMap 3D city, then 360° photos in classic and smooth modes.
+   */
   private toggleImageryMode(): void {
-    const sv = this.renderer.streetView;
-    if (!sv) return;
-    this.settings.imageryMode = this.settings.imageryMode === 'classic' ? 'smooth' : 'classic';
-    sv.mode = this.settings.imageryMode;
-    saveSettings(this.settings);
-    toast(
-      this.settings.imageryMode === 'classic'
-        ? 'Classic view: one photo at a time, no bending'
-        : 'Smooth view: neighbouring photos blended for continuous motion',
+    type View = { world: Settings['worldView']; mode?: Settings['imageryMode']; label: string };
+    const views: View[] = this.renderer.availableViews.flatMap((w): View[] =>
+      w === 'photos'
+        ? [
+            {
+              world: 'photos',
+              mode: 'classic',
+              label: 'Photo view (classic): one photo at a time',
+            },
+            {
+              world: 'photos',
+              mode: 'smooth',
+              label: 'Photo view (smooth): neighbouring photos blended',
+            },
+          ]
+        : [
+            {
+              world: w,
+              label: w === 'google3d' ? 'Google 3D view' : '3D city view (OpenStreetMap)',
+            },
+          ],
     );
+    if (views.length < 2) {
+      toast('Only the 3D city is available here.');
+      return;
+    }
+    const s = this.settings;
+    const i = views.findIndex(
+      (v) => v.world === s.worldView && (v.world !== 'photos' || v.mode === s.imageryMode),
+    );
+    const next = views[(i + 1) % views.length];
+    s.worldView = next.world;
+    if (next.mode) s.imageryMode = next.mode;
+    if (this.renderer.streetView) this.renderer.streetView.mode = s.imageryMode;
+    this.renderer.setWorldView(s.worldView);
+    if (s.worldView === 'photos') this.renderer.setView('clean');
+    saveSettings(s);
+    toast(next.label);
   }
 
   private toggleMute(): void {
@@ -274,6 +335,7 @@ export class DriveSession {
         gear: this.vehicle.gear,
         signal: this.signal === 'hazard' ? null : this.signal,
         laneCenter: this.vehicle.params.laneCenter,
+        controls: this.renderer.city?.controls,
       },
       dt,
     );
@@ -287,6 +349,7 @@ export class DriveSession {
       dt,
     );
     this.renderer.updateStreetView(st.s, dt, st.speed);
+    this.renderer.updateCity(st.s, this.time, loadWindow(st.speed).ahead + 250);
     this.audio.update(st.rpm, f.throttle, st.speed, f.horn);
 
     this.hudTimer += dt;
@@ -348,6 +411,7 @@ export class DriveSession {
       glyph: nav.glyph,
       navDistance: nav.distance,
       navInstruction: nav.instruction,
+      control: this.controlAhead(),
       score: this.coach.score,
       progress: st.s / this.path.length,
       attribution: this.imageryCredit(),
@@ -375,10 +439,24 @@ export class DriveSession {
   }
 
   private imageryCredit(): string {
+    if (this.renderer.worldView === 'google3d') return this.renderer.googleTiles?.attribution ?? '';
+    if (this.renderer.worldView === 'city') return '3D city © OpenStreetMap contributors';
     const sv = this.renderer.streetView;
     if (!sv?.coverage) return '';
     const buffered = `${this.formatDistance(sv.bufferedAhead)} buffered`;
     return [sv.source.credit, sv.attribution, buffered].filter(Boolean).join(' · ');
+  }
+
+  /** The next stop sign or signal within 120 m, for the HUD. */
+  private controlAhead(): HudData['control'] {
+    const c = this.renderer.city?.nextControl(this.vehicle.state.s);
+    if (!c) return null;
+    const d = c.s - this.vehicle.state.s;
+    if (d > 120 || d < -1) return null;
+    return {
+      kind: c.kind === 'stop' ? 'stop' : signalState(c.id, this.time),
+      distance: this.formatDistance(Math.max(0, d)),
+    };
   }
 
   private checkArrival(): void {
@@ -436,6 +514,7 @@ export class DriveSession {
       this.renderer.streetView.quality = this.settings.quality;
       this.renderer.streetView.mode = this.settings.imageryMode;
     }
+    this.renderer.setWorldView(this.settings.worldView);
   }
 
   finish(completed: boolean): void {
@@ -476,6 +555,7 @@ export class DriveSession {
   }
 
   destroy(): void {
+    this.disposed = true;
     this.input.touch = null;
     this.input.keyboard.setEnabled(true);
     this.minimap?.destroy();

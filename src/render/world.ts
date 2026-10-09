@@ -122,6 +122,7 @@ export function buildWorld(path: DrivePath, rightHand: boolean): THREE.Group {
     new THREE.MeshLambertMaterial({ color: '#7fa65a' }),
   );
   ground.name = 'ground'; // re-centred under the car every frame
+  ground.receiveShadow = true;
   ground.position.y = -0.05;
   world.add(flatLayer(ground, -9));
 
@@ -129,11 +130,20 @@ export function buildWorld(path: DrivePath, rightHand: boolean): THREE.Group {
     ribbon(samples, -ROAD_HALF, ROAD_HALF, 0.01, 12),
     new THREE.MeshLambertMaterial({ map: roadTexture(rightHand) }),
   );
+  road.receiveShadow = true;
   world.add(flatLayer(road, -7));
 
+  // Everything below is generic stand-in scenery, hidden once the real 3D
+  // city from OpenStreetMap has loaded.
+  const generic = new THREE.Group();
+  generic.name = 'generic-scenery';
+  world.add(generic);
+
   const walkMat = new THREE.MeshLambertMaterial({ color: '#b9b4aa' });
-  world.add(flatLayer(new THREE.Mesh(ribbon(samples, ROAD_HALF, CURB_HALF, 0.12, 4), walkMat), -6));
-  world.add(
+  generic.add(
+    flatLayer(new THREE.Mesh(ribbon(samples, ROAD_HALF, CURB_HALF, 0.12, 4), walkMat), -6),
+  );
+  generic.add(
     flatLayer(new THREE.Mesh(ribbon(samples, -CURB_HALF, -ROAD_HALF, 0.12, 4), walkMat), -6),
   );
 
@@ -148,10 +158,10 @@ export function buildWorld(path: DrivePath, rightHand: boolean): THREE.Group {
     );
     cross.position.copy(toThree(at, 0.005));
     cross.rotation.y = -(at.heading + Math.PI / 2);
-    world.add(flatLayer(cross, -8));
+    generic.add(flatLayer(cross, -8));
   }
 
-  scatter(world, path, samples);
+  scatter(generic, path, samples);
   return world;
 }
 

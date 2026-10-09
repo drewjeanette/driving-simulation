@@ -12,15 +12,16 @@ the browser
 
 ## Features
 
-|                                 |                                                                                                                                                                                                                      |
-| ------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Real routes**                 | Type an address (with autocomplete), or spin the 3D globe and click anywhere to start there. Routes are snapped to real roads with turn-by-turn directions.                                                          |
-| **Photorealistic 360° imagery** | Free Mapillary panoramas (or Google Street View with a key), rendered in WebGL so the car glides smoothly between photos instead of jumping. Imagery preloads ahead of the car like a game's render distance.        |
-| **Real driving controls**       | Gas, brake and steering with a physics model. Automatic transmission with `P R N D` in standard lever order, a brake-shift interlock, idle creep in D and R, and a refusal to shift into P or R while moving.        |
-| **Any controller**              | Keyboard, Xbox, PlayStation and other standard gamepads out of the box. Racing wheels and pedal sets (Logitech, Thrustmaster, Fanatec, Moza…) through a 30-second calibration wizard. Touch controls on phones.      |
-| **VR**                          | One click into WebXR on Quest, Vision Pro or SteamVR headsets. Look around the cabin with your head; the instrument cluster and directions are readable in the headset.                                              |
-| **Driving examiner**            | Scores turn signals (and which side), speeding against posted limits, crossing the centre line, hitting the curb, harsh braking or acceleration, cornering speed and coasting in neutral. Ends with a graded report. |
-| **Costs nothing**               | OpenStreetMap search and routing plus Mapillary imagery need no billing account. With no token at all it falls back to a generated 3D road, so anyone can clone and run it.                                          |
+|                                 |                                                                                                                                                                                                                                                                                                                                                                                       |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Real routes**                 | Type an address (with autocomplete), or spin the 3D globe and click anywhere to start there. Routes are snapped to real roads with turn-by-turn directions.                                                                                                                                                                                                                           |
+| **Photorealistic 360° imagery** | Free Mapillary panoramas (or Google Street View with a key), rendered in WebGL so the car glides smoothly between photos instead of jumping. Imagery preloads ahead of the car like a game's render distance.                                                                                                                                                                         |
+| **Real 3D city**                | The real street rebuilt in 3D from OpenStreetMap: building footprints and heights, pitched and flat roofs, facades with windows, side streets, sidewalks, parks, trees, and real stop signs and traffic lights (with cycling signals). Streams in chunks ahead of the car, with sun shadows. With a Google key, **Google 3D** shows Google Maps' photorealistic 3D buildings instead. |
+| **Real driving controls**       | Gas, brake and steering with a physics model. Automatic transmission with `P R N D` in standard lever order, a brake-shift interlock, idle creep in D and R, and a refusal to shift into P or R while moving.                                                                                                                                                                         |
+| **Any controller**              | Keyboard, Xbox, PlayStation and other standard gamepads out of the box. Racing wheels and pedal sets (Logitech, Thrustmaster, Fanatec, Moza…) through a 30-second calibration wizard. Touch controls on phones.                                                                                                                                                                       |
+| **VR**                          | One click into WebXR on Quest, Vision Pro or SteamVR headsets. Look around the cabin with your head; the instrument cluster and directions are readable in the headset.                                                                                                                                                                                                               |
+| **Driving examiner**            | Scores full stops at stop signs, red lights, turn signals (and which side), speeding against posted limits, crossing the centre line, hitting the curb, harsh braking or acceleration, cornering speed and coasting in neutral. Ends with a graded report.                                                                                                                            |
+| **Costs nothing**               | OpenStreetMap search and routing plus Mapillary imagery need no billing account. With no token at all it falls back to a generated 3D road, so anyone can clone and run it.                                                                                                                                                                                                           |
 
 ## How it works
 
@@ -179,8 +180,8 @@ referrers. Production builds ship a CSP, and third-party text never reaches `inn
 
 ## Limitations and roadmap
 
-- Other traffic, pedestrians, traffic lights and stop signs aren't simulated yet. Street View photos are
-  static, so cars in them are frozen. Stop-sign and signal checks from OpenStreetMap data are next.
+- Other traffic and pedestrians aren't simulated yet. Street View photos are
+  static, so cars in them are frozen.
 - The car stays on the planned route; driving off-route to explore freely isn't supported.
 - Google's Routes API doesn't return posted speed limits, so speeding checks only run in the free mode
   (OpenStreetMap `maxspeed`) for now.
